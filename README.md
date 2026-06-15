@@ -28,13 +28,20 @@ This project uses the [Indian Stock Market API](https://indianapi.in/indian-stoc
 
 ### Backend Setup
 1. Navigate to the `server` directory: `cd server`
-2. Install dependencies: `npm install`
-3. Copy the `.env.example` file to `.env` and fill in your credentials:
+2. Install all required dependencies explicitly:
    ```bash
-   cp .env.example .env
+   npm install @prisma/client @prisma/adapter-pg pg bcryptjs compression cors dotenv express express-rate-limit express-validator helmet jsonwebtoken morgan xlsx
+   
+   npm install -D typescript @types/node @types/express @types/cors @types/bcryptjs @types/compression @types/jsonwebtoken @types/morgan @types/multer @types/pg nodemon prisma ts-node
+   ```
+3. Copy the `.env.example` file to `.env` and fill in your credentials:
+   ```
+   DATABASE_URL="postgresql://user:password@host:port/dbname"
+   INDIAN_STOCK_API_KEY="your_api_key"
    ```
    *You will need to add your PostgreSQL connection string and your API key from the Indian Stock Market API.*
-4. Initialize the Prisma database:
+4. **Initialize the Prisma database**:
+   Make sure you have specified your `DATABASE_URL` in `.env` (pointing to a running PostgreSQL database). Then, apply the schema and generate the client:
    ```bash
    npx prisma db push
    npx prisma generate
@@ -43,7 +50,12 @@ This project uses the [Indian Stock Market API](https://indianapi.in/indian-stoc
 
 ### Frontend Setup
 1. Navigate to the `client` directory: `cd client`
-2. Install dependencies: `npm install`
+2. Install all required dependencies explicitly:
+   ```bash
+   npm install @hookform/resolvers @tanstack/react-query axios lucide-react next react react-dom react-hook-form recharts xlsx zod zustand
+   
+   npm install -D @tailwindcss/postcss @types/node @types/react @types/react-dom babel-plugin-react-compiler eslint eslint-config-next tailwindcss typescript
+   ```
 3. Start the Next.js development server: `npm run dev`
 4. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
