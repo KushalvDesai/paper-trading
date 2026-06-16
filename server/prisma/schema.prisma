@@ -11,15 +11,30 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id        String     @id @default(uuid())
+  username  String     @unique
+  password  String
+  networth  Float      @default(0)
+  wallet    Float      @default(1000000)
+  positions Position[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
 model Position {
-  id           String   @id @default(uuid())
-  symbol       String   @unique
+  id               String   @id @default(uuid())
+  symbol           String
   shares           Float    @default(0)
   averagePrice     Float
   lastFetchedPrice Float?
   boughtAtPrice    Float?
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@unique([symbol, userId])
 }
 
 model ApiUsage {

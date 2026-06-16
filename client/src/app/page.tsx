@@ -16,15 +16,41 @@ export default function PaperTradingApp() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [walletAmount, setWalletAmount] = useState('');
+
+  const fetchUser = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/auth/me`);
+      setUser(res.data);
+    } catch (err: any) {
+      console.error('Failed to fetch user', err);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    try {
+      const res = await axios.post(`${API_URL}/auth/login`, { username, password });
+      setUser(res.data);
+      axios.defaults.headers.common['x-user-id'] = res.data.id;
+    } catch (err: any) {
+      setLoginError(err.response?.data?.error || 'Login failed');
+    }
+  };
 
   const fetchPortfolio = async (skipApi = false) => {
+    if (!user) return;
     setPortfolioLoading(true);
     try {
       const res = await axios.get(`${API_URL}/trading/portfolio${skipApi ? '?skipApi=true' : ''}`);
       setPortfolio(res.data);
     } catch (err: any) {
       console.error('Failed to fetch portfolio', err);
-      // don't show error to user for background fetches unless necessary
     } finally {
       setPortfolioLoading(false);
     }
@@ -32,8 +58,10 @@ export default function PaperTradingApp() {
 
   // Portfolio is loaded on startup using cached prices (skipApi=true) to save API limits.
   useEffect(() => {
-    fetchPortfolio(true);
-  }, []);
+    if (user) {
+      fetchPortfolio(true);
+    }
+  }, [user]);
 
   const handleSearch = async () => {
     if (!symbol) return;
@@ -67,11 +95,12 @@ export default function PaperTradingApp() {
     setError('');
     setSuccess('');
     try {
-      await axios.post(`${API_URL}/trading/buy`, {
+      const res = await axios.post(`${API_URL}/trading/buy`, {
         symbol: stockDetails.symbol,
         shares: calculatedShares
       });
-      setSuccess(`Successfully invested ₹${numAmount} to buy ${calculatedShares.toFixed(4)} shares of ${stockDetails.symbol}. Click Refresh in your portfolio to see updates.`);
+      setSuccess(`Successfully invested ₹${res.data.totalCost.toFixed(2)} (including ₹${res.data.taxes.totalTaxes.toFixed(2)} in taxes) to buy ${calculatedShares.toFixed(4)} shares of ${stockDetails.symbol}. Click Refresh in your portfolio to see updates.`);
+      await fetchUser();
       // Removed automatic fetchPortfolio() to save API rate limit
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to buy stock');
@@ -95,6 +124,47 @@ export default function PaperTradingApp() {
     }
   };
 
+  const handleWallet = async (action: 'deposit' | 'withdraw') => {
+    const amountNum = Number(walletAmount);
+    if (!amountNum || amountNum <= 0) return;
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await axios.post(`${API_URL}/auth/wallet`, { action, amount: amountNum });
+      setSuccess(res.data.message);
+      setWalletAmount('');
+      await fetchUser();
+    } catch (err: any) {
+      setError(err.response?.data?.error || `Failed to ${action}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSell = async (symbol: string, currentShares: number) => {
+    const input = window.prompt(`How many shares of ${symbol} do you want to sell? (Max: ${currentShares.toFixed(4)})`, currentShares.toString());
+    if (!input) return;
+    const sharesToSell = Number(input);
+    if (isNaN(sharesToSell) || sharesToSell <= 0 || sharesToSell > currentShares) {
+      alert('Invalid shares amount');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await axios.post(`${API_URL}/trading/sell`, { symbol, sharesToSell });
+      const taxMsg = res.data.taxes.totalTaxes > 0 ? ` (Tax deducted: ₹${res.data.taxes.totalTaxes.toFixed(2)}${res.data.taxes.capitalGainsTax > 0 ? ` incl. ${res.data.isShortTerm ? 'STCG' : 'LTCG'}` : ''})` : '';
+      setSuccess(`Successfully sold ${sharesToSell} shares of ${symbol} for ₹${res.data.revenue.toFixed(2)}${taxMsg}.`);
+      await fetchPortfolio(true);
+      await fetchUser();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to sell stock');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const extractPrice = (data: any): number => {
     if (!data) return 0;
     if (data.currentPrice) {
@@ -106,14 +176,71 @@ export default function PaperTradingApp() {
     return 0; // Return 0 if unable to extract explicitly
   };
 
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 font-sans text-neutral-100">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+          <div className="flex items-center justify-center space-x-3 mb-8">
+            <Briefcase className="w-8 h-8 text-emerald-400" />
+            <h1 className="text-2xl font-bold tracking-tight">Login</h1>
+          </div>
+          {loginError && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center space-x-2 text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <p>{loginError}</p>
+            </div>
+          )}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-400 mb-1">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-emerald-500 transition"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-400 mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-emerald-500 transition"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-2.5 rounded-lg transition mt-4"
+            >
+              Sign In
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  const netWorth = (user.wallet || 0) + (portfolio?.totalPortfolioValue || 0);
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-8 font-sans">
       <div className="max-w-5xl mx-auto space-y-8">
         
         {/* Header */}
-        <header className="flex items-center space-x-3 pb-6 border-b border-neutral-800">
-          <Briefcase className="w-8 h-8 text-emerald-400" />
-          <h1 className="text-3xl font-semibold tracking-tight text-white">Paper Trading</h1>
+        <header className="flex justify-between items-center pb-6 border-b border-neutral-800">
+          <div className="flex items-center space-x-3">
+            <Briefcase className="w-8 h-8 text-emerald-400" />
+            <h1 className="text-3xl font-semibold tracking-tight text-white">Paper Trading</h1>
+          </div>
+          <div className="flex items-center space-x-4">
+            <span className="text-neutral-400 text-sm hidden sm:inline">User: <span className="text-white font-medium">{user.username}</span></span>
+            <span className="text-neutral-400 text-sm">Wallet: <span className="text-white font-medium">₹{user.wallet?.toFixed(2)}</span></span>
+            <span className="text-neutral-400 text-sm">Net Worth: <span className="text-emerald-400 font-bold">₹{netWorth.toFixed(2)}</span></span>
+            <button onClick={() => { setUser(null); delete axios.defaults.headers.common['x-user-id']; }} className="text-sm bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded transition">Logout</button>
+          </div>
         </header>
 
         {/* Alerts */}
@@ -269,6 +396,35 @@ export default function PaperTradingApp() {
                 </div>
               )}
             </div>
+
+            {/* Wallet Management */}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl">
+              <h2 className="text-lg font-medium mb-4 text-white flex items-center">
+                <DollarSign className="w-5 h-5 mr-2 text-emerald-400" />
+                Wallet Management
+              </h2>
+              <div className="flex space-x-2">
+                <input
+                  type="number"
+                  value={walletAmount}
+                  onChange={(e) => setWalletAmount(e.target.value)}
+                  placeholder="Amount"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  onClick={() => handleWallet('deposit')}
+                  className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-4 py-2 rounded-lg font-medium transition"
+                >
+                  Deposit
+                </button>
+                <button
+                  onClick={() => handleWallet('withdraw')}
+                  className="bg-red-500/20 text-red-400 hover:bg-red-500/30 px-4 py-2 rounded-lg font-medium transition"
+                >
+                  Withdraw
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Right Column: Portfolio */}
@@ -341,13 +497,22 @@ export default function PaperTradingApp() {
                             <span className="font-bold text-lg block">{pos.symbol}</span>
                             <span className="text-neutral-300 text-sm">{pos.shares.toFixed(4)} Shares</span>
                           </div>
-                          <button 
-                            onClick={() => handleDelete(pos.symbol)}
-                            className="text-neutral-500 hover:text-red-400 transition p-1.5 rounded-md hover:bg-red-400/10"
-                            title="Delete Position"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex space-x-1">
+                            <button 
+                              onClick={() => handleSell(pos.symbol, pos.shares)}
+                              className="text-neutral-500 hover:text-emerald-400 transition px-3 py-1.5 rounded-md hover:bg-emerald-400/10 text-sm font-medium"
+                              title="Sell Shares"
+                            >
+                              Sell
+                            </button>
+                            <button 
+                              onClick={() => handleDelete(pos.symbol)}
+                              className="text-neutral-500 hover:text-red-400 transition p-1.5 rounded-md hover:bg-red-400/10"
+                              title="Delete Position"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                         
                         <div className="text-xs text-neutral-500 mb-2 border-b border-neutral-800 pb-2 space-y-0.5">
