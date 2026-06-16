@@ -20,10 +20,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 import tradingRoutes from './routes/tradingRoutes';
+import authRoutes from './routes/authRoutes';
 
 // Routes
 app.use('/api/stock', stockRoutes);
 app.use('/api/trading', tradingRoutes);
+app.use('/api/auth', authRoutes);
 
 // Basic health check endpoint
 app.get('/health', (req: Request, res: Response) => {
