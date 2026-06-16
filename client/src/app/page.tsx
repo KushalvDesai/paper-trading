@@ -49,8 +49,14 @@ export default function PaperTradingApp() {
     try {
       const res = await axios.get(`${API_URL}/trading/portfolio${skipApi ? '?skipApi=true' : ''}`);
       setPortfolio(res.data);
+      if (res.data.warning) {
+        setError(res.data.warning);
+      }
     } catch (err: any) {
       console.error('Failed to fetch portfolio', err);
+      if (!skipApi) {
+        setError(err.response?.data?.error || 'Failed to refresh portfolio prices');
+      }
     } finally {
       setPortfolioLoading(false);
     }

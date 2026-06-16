@@ -13,12 +13,14 @@ interface FetchOptions {
 class IndianStockApiClient {
   private readonly apiKey1: string;
   private readonly apiKey2: string;
+  private readonly apiKey3: string;
 
   constructor() {
     this.apiKey1 = process.env.INDIAN_STOCK_API_KEY_1 || process.env.INDIAN_STOCK_API_KEY || '';
     this.apiKey2 = process.env.INDIAN_STOCK_API_KEY_2 || '';
-    if (!this.apiKey1 && !this.apiKey2) {
-      console.warn('Neither INDIAN_STOCK_API_KEY_1 nor INDIAN_STOCK_API_KEY_2 is defined in environment variables.');
+    this.apiKey3 = process.env.INDIAN_STOCK_API_KEY_3 || '';
+    if (!this.apiKey1 && !this.apiKey2 && !this.apiKey3) {
+      console.warn('No INDIAN_STOCK_API_KEY is defined in environment variables.');
     }
   }
 
@@ -36,11 +38,18 @@ class IndianStockApiClient {
       }
     }
 
-    if (usage && usage.count >= 34) {
-      throw new Error('Daily API rate limit of 34 calls reached across both keys.');
+    if (usage && usage.count >= 50) {
+      throw new Error('Daily API rate limit of 50 calls reached across all keys.');
     }
 
-    const currentApiKey = (usage && usage.count >= 17 && this.apiKey2) ? this.apiKey2 : this.apiKey1;
+    let currentApiKey = this.apiKey1;
+    if (usage) {
+      if (usage.count >= 34 && this.apiKey3) {
+        currentApiKey = this.apiKey3;
+      } else if (usage.count >= 17 && this.apiKey2) {
+        currentApiKey = this.apiKey2;
+      }
+    }
 
     let url = `${BASE_URL}${endpoint}`;
     if (params) {

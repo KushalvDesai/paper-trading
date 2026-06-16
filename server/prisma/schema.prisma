@@ -15,9 +15,11 @@ model User {
   id        String     @id @default(uuid())
   username  String     @unique
   password  String
-  networth  Float      @default(0)
-  wallet    Float      @default(1000000)
-  positions Position[]
+  networth           Float      @default(0)
+  wallet             Float      @default(1000000)
+  portfolioRefreshes Int        @default(0)
+  lastRefreshDate    DateTime?
+  positions          Position[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 }

@@ -17,6 +17,24 @@ const extractPrice = (data: any): number => {
   return 0; // Return 0 if unable to extract explicitly
 };
 
+function isMarketOpenIST(): boolean {
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istTime = new Date(now.getTime() + istOffset);
+
+  const day = istTime.getUTCDay();
+  if (day === 0 || day === 6) return false;
+
+  const hours = istTime.getUTCHours();
+  const minutes = istTime.getUTCMinutes();
+  
+  const totalMinutes = hours * 60 + minutes;
+  const openMinutes = 9 * 60 + 15;
+  const closeMinutes = 15 * 60 + 30;
+  
+  return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
+}
+
 // POST /api/trading/buy
 router.post('/buy', async (req: Request, res: Response) => {
   try {
@@ -178,9 +196,42 @@ router.post('/sell', async (req: Request, res: Response) => {
 // GET /api/trading/portfolio
 router.get('/portfolio', async (req: Request, res: Response) => {
   try {
-    const skipApi = req.query.skipApi === 'true';
+    let skipApi = req.query.skipApi === 'true';
     const userId = req.headers['x-user-id'] as string;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    let user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let warningMessage = null;
+
+    if (!skipApi) {
+      if (!isMarketOpenIST()) {
+        skipApi = true;
+        warningMessage = 'Market is closed. Showing cached prices. Manual refresh only allowed during active hours (Mon-Fri, 9:15 AM - 3:30 PM IST).';
+      } else {
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+
+        let refreshesToday = user.portfolioRefreshes;
+        if (!user.lastRefreshDate || user.lastRefreshDate.getTime() !== today.getTime()) {
+          refreshesToday = 0;
+        }
+
+        if (refreshesToday >= 2) {
+          skipApi = true;
+          warningMessage = 'You have reached your limit of 2 manual portfolio refreshes for today. Showing cached prices.';
+        } else {
+          user = await prisma.user.update({
+            where: { id: userId },
+            data: {
+              portfolioRefreshes: refreshesToday + 1,
+              lastRefreshDate: today
+            }
+          });
+        }
+      }
+    }
 
     const positions = await prisma.position.findMany({ where: { userId } });
     
@@ -224,11 +275,11 @@ router.get('/portfolio', async (req: Request, res: Response) => {
     const totalPortfolioValue = enrichedPositions.reduce((acc, pos) => acc + (pos.currentPrice * pos.shares), 0);
     const totalInvestment = enrichedPositions.reduce((acc, pos) => acc + (pos.averagePrice * pos.shares), 0);
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (user) {
+    const dbUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (dbUser) {
       await prisma.user.update({
         where: { id: userId },
-        data: { networth: user.wallet + totalPortfolioValue }
+        data: { networth: dbUser.wallet + totalPortfolioValue }
       });
     }
 
@@ -242,7 +293,8 @@ router.get('/portfolio', async (req: Request, res: Response) => {
       totalPortfolioValue,
       totalInvestment,
       bestPerformer,
-      worstPerformer
+      worstPerformer,
+      warning: warningMessage
     });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to fetch portfolio', details: error.message });
