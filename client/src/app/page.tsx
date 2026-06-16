@@ -19,6 +19,7 @@ export default function PaperTradingApp() {
   const [user, setUser] = useState<any>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
   const [loginError, setLoginError] = useState('');
   const [walletAmount, setWalletAmount] = useState('');
 
@@ -31,15 +32,27 @@ export default function PaperTradingApp() {
     }
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogout = () => {
+    setUser(null);
+    delete axios.defaults.headers.common['x-user-id'];
+    localStorage.removeItem('paper_trading_user_id');
+    localStorage.removeItem('paper_trading_session_expiry');
+  };
+
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     try {
-      const res = await axios.post(`${API_URL}/auth/login`, { username, password });
+      const endpoint = isLogin ? '/auth/login' : '/auth/signup';
+      const res = await axios.post(`${API_URL}${endpoint}`, { username, password });
       setUser(res.data);
       axios.defaults.headers.common['x-user-id'] = res.data.id;
+      
+      const expiryTime = Date.now() + 6 * 60 * 60 * 1000; // 6 hours in ms
+      localStorage.setItem('paper_trading_user_id', res.data.id);
+      localStorage.setItem('paper_trading_session_expiry', expiryTime.toString());
     } catch (err: any) {
-      setLoginError(err.response?.data?.error || 'Login failed');
+      setLoginError(err.response?.data?.error || (isLogin ? 'Login failed' : 'Signup failed'));
     }
   };
 
@@ -61,6 +74,29 @@ export default function PaperTradingApp() {
       setPortfolioLoading(false);
     }
   };
+
+  useEffect(() => {
+    const savedUserId = localStorage.getItem('paper_trading_user_id');
+    const expiry = localStorage.getItem('paper_trading_session_expiry');
+
+    if (savedUserId && expiry) {
+      if (Date.now() > Number(expiry)) {
+        handleLogout();
+      } else {
+        axios.defaults.headers.common['x-user-id'] = savedUserId;
+        fetchUser();
+      }
+    }
+
+    const interval = setInterval(() => {
+      const currentExpiry = localStorage.getItem('paper_trading_session_expiry');
+      if (currentExpiry && Date.now() > Number(currentExpiry)) {
+        handleLogout();
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Portfolio is loaded on startup using cached prices (skipApi=true) to save API limits.
   useEffect(() => {
@@ -188,7 +224,7 @@ export default function PaperTradingApp() {
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 max-w-sm w-full shadow-2xl">
           <div className="flex items-center justify-center space-x-3 mb-8">
             <Briefcase className="w-8 h-8 text-emerald-400" />
-            <h1 className="text-2xl font-bold tracking-tight">Login</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{isLogin ? 'Login' : 'Create Account'}</h1>
           </div>
           {loginError && (
             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center space-x-2 text-red-400 text-sm">
@@ -196,7 +232,7 @@ export default function PaperTradingApp() {
               <p>{loginError}</p>
             </div>
           )}
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleAuth} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-neutral-400 mb-1">Username</label>
               <input
@@ -221,9 +257,15 @@ export default function PaperTradingApp() {
               type="submit"
               className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-2.5 rounded-lg transition mt-4"
             >
-              Sign In
+              {isLogin ? 'Sign In' : 'Sign Up'}
             </button>
           </form>
+          <div className="mt-6 text-center text-sm text-neutral-400">
+            {isLogin ? "Don't have an account? " : "Already have an account? "}
+            <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-emerald-400 hover:text-emerald-300 font-medium transition">
+              {isLogin ? 'Sign Up' : 'Login'}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -245,7 +287,7 @@ export default function PaperTradingApp() {
             <span className="text-neutral-400 text-sm hidden sm:inline">User: <span className="text-white font-medium">{user.username}</span></span>
             <span className="text-neutral-400 text-sm">Wallet: <span className="text-white font-medium">₹{user.wallet?.toFixed(2)}</span></span>
             <span className="text-neutral-400 text-sm">Net Worth: <span className="text-emerald-400 font-bold">₹{netWorth.toFixed(2)}</span></span>
-            <button onClick={() => { setUser(null); delete axios.defaults.headers.common['x-user-id']; }} className="text-sm bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded transition">Logout</button>
+            <button onClick={handleLogout} className="text-sm bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded transition">Logout</button>
           </div>
         </header>
 

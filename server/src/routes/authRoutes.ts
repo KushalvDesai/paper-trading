@@ -4,6 +4,37 @@ import prisma from '../db';
 
 const router = Router();
 
+router.post('/signup', async (req: Request, res: Response) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { username } });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        username,
+        password: hashedPassword
+      }
+    });
+
+    res.status(201).json({
+      id: user.id,
+      username: user.username,
+      wallet: user.wallet,
+      networth: user.networth
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
 router.post('/login', async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
