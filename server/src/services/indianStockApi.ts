@@ -11,12 +11,14 @@ interface FetchOptions {
 }
 
 class IndianStockApiClient {
-  private readonly apiKey: string;
+  private readonly apiKey1: string;
+  private readonly apiKey2: string;
 
   constructor() {
-    this.apiKey = process.env.INDIAN_STOCK_API_KEY || '';
-    if (!this.apiKey) {
-      console.warn('INDIAN_STOCK_API_KEY is not defined in environment variables.');
+    this.apiKey1 = process.env.INDIAN_STOCK_API_KEY_1 || process.env.INDIAN_STOCK_API_KEY || '';
+    this.apiKey2 = process.env.INDIAN_STOCK_API_KEY_2 || '';
+    if (!this.apiKey1 && !this.apiKey2) {
+      console.warn('Neither INDIAN_STOCK_API_KEY_1 nor INDIAN_STOCK_API_KEY_2 is defined in environment variables.');
     }
   }
 
@@ -34,9 +36,11 @@ class IndianStockApiClient {
       }
     }
 
-    if (usage && usage.count >= 16) {
-      throw new Error('Daily API rate limit of 16 calls reached.');
+    if (usage && usage.count >= 34) {
+      throw new Error('Daily API rate limit of 34 calls reached across both keys.');
     }
+
+    const currentApiKey = (usage && usage.count >= 17 && this.apiKey2) ? this.apiKey2 : this.apiKey1;
 
     let url = `${BASE_URL}${endpoint}`;
     if (params) {
@@ -48,7 +52,7 @@ class IndianStockApiClient {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'x-api-key': this.apiKey,
+          'x-api-key': currentApiKey,
           'Content-Type': 'application/json'
         }
       });
